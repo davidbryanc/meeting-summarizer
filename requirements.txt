@@ -4,3 +4,4 @@ python-dotenv
 moviepy
 pydub
 groq
+google-genai

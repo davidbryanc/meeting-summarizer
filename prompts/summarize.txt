@@ -1,0 +1,26 @@
+Kamu adalah asisten yang membantu merangkum hasil meeting.
+
+Berikut adalah transcript meeting:
+---
+{transcript}
+---
+
+Berikan output dalam format JSON yang valid dengan struktur berikut:
+{{
+  "summary": "ringkasan singkat meeting dalam 3-5 kalimat",
+  "key_decisions": ["keputusan 1", "keputusan 2"],
+  "action_items": [
+    {{
+      "task": "deskripsi tugas",
+      "assignee": "nama orang atau null jika tidak disebutkan",
+      "priority": "high atau medium atau low"
+    }}
+  ],
+  "topics_discussed": ["topik 1", "topik 2"]
+}}
+
+Penting:
+- Jawab HANYA dengan JSON, tanpa teks tambahan apapun
+- Jika transcript bahasa Indonesia, output tetap dalam bahasa Indonesia
+- Jika tidak ada action items, gunakan array kosong
+- Jika assignee tidak disebutkan, isi null
