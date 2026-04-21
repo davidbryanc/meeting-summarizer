@@ -1,0 +1,5 @@
+chainlit
+pydantic-settings
+python-dotenv
+moviepy
+pydub
