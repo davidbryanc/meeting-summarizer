@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+from pydub import AudioSegment
 
 SUPPORTED_FORMATS = {".mp3", ".mp4", ".wav", ".m4a", ".webm"}
 UPLOADS_DIR = Path("uploads")
+CHUNK_DURATION_MS = 10 * 60 * 1000  # 10 menit per chunk
 
 MAX_SIZE_MB = {
     ".mp3": 100,
@@ -32,7 +34,43 @@ def extract_audio_from_video(video_path: Path) -> Path:
     clip.close()
     return audio_path
 
+def split_audio_into_chunks(audio_path: Path) -> list[Path]:
+    """
+    Potong audio jadi beberapa chunk kalau durasinya panjang.
+    Kalau pendek (< 10 menit), return list berisi 1 path saja.
+    """
+    audio = AudioSegment.from_file(str(audio_path))
+    duration_ms = len(audio)
+
+    if duration_ms <= CHUNK_DURATION_MS:
+        return [audio_path]
+
+    chunks = []
+    chunk_dir = audio_path.parent / f"{audio_path.stem}_chunks"
+    chunk_dir.mkdir(exist_ok=True)
+
+    start = 0
+    index = 0
+    while start < duration_ms:
+        end = min(start + CHUNK_DURATION_MS, duration_ms)
+        chunk = audio[start:end]
+        chunk_path = chunk_dir / f"chunk_{index:03d}.mp3"
+        chunk.export(str(chunk_path), format="mp3")
+        chunks.append(chunk_path)
+        start = end
+        index += 1
+
+    return chunks
+
 def cleanup_file(file_path: Path) -> None:
-    """Hapus file setelah selesai diproses."""
     if file_path.exists():
         file_path.unlink()
+
+def cleanup_chunks(chunk_paths: list[Path]) -> None:
+    """Hapus chunk-chunk sementara setelah transcribe selesai."""
+    for path in chunk_paths:
+        cleanup_file(path)
+    if chunk_paths:
+        chunk_dir = chunk_paths[0].parent
+        if chunk_dir.exists() and not any(chunk_dir.iterdir()):
+            chunk_dir.rmdir()

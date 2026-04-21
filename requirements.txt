@@ -3,3 +3,4 @@ pydantic-settings
 python-dotenv
 moviepy
 pydub
+groq

@@ -25,3 +25,8 @@ chainlit run app/main.py
 
 ## Status
 🚧 Work in progress — Day 2/10
+```
+
+---
+
+Setelah semua ini jalan, coba jalankan `chainlit run app/main.py` dan screenshot hasilnya ke sini. Kalau ada error kita debug bareng sebelum lanjut ke hari 2.
