@@ -5,3 +5,8 @@ moviepy
 pydub
 groq
 google-genai
+pyannote.audio
+torch
+torchaudio
+soundfile
+numpy

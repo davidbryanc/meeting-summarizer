@@ -42,7 +42,7 @@ class TranscriberService:
                 model="whisper-large-v3",
                 file=f,
                 response_format="text",
-                language="id",  # ganti ke "en" kalau meeting bahasa Inggris
+                # language="en",  # nyalakan kalau mau fokus di 1 bahasa
             )
         return result
 

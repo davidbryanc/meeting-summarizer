@@ -74,3 +74,12 @@ def cleanup_chunks(chunk_paths: list[Path]) -> None:
         chunk_dir = chunk_paths[0].parent
         if chunk_dir.exists() and not any(chunk_dir.iterdir()):
             chunk_dir.rmdir()
+            
+def convert_to_wav(audio_path: Path) -> Path:
+    """Convert audio ke wav untuk kompatibilitas soundfile."""
+    if audio_path.suffix.lower() == ".wav":
+        return audio_path
+    wav_path = audio_path.with_suffix(".wav")
+    audio = AudioSegment.from_file(str(audio_path))
+    audio.export(str(wav_path), format="wav")
+    return wav_path
