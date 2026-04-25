@@ -9,7 +9,10 @@ from services.llm_processor import LLMProcessorService
 from services.diarizer import DiarizerService
 from utils.export import save_transcript, save_summary
 from config.settings import settings
+from utils.export import save_transcript, save_summary, save_summary_pdf
+from utils.logger import get_logger
 
+logger = get_logger("main")
 file_handler = FileHandlerService()
 transcriber = TranscriberService()
 llm_processor = LLMProcessorService()
@@ -18,6 +21,7 @@ diarizer = DiarizerService()
 
 @cl.on_chat_start
 async def on_chat_start():
+    logger.info("Session baru dimulai")
     cl.user_session.set("transcript", None)
     cl.user_session.set("original_filename", None)
     cl.user_session.set("chat_history", [])
@@ -160,28 +164,35 @@ async def on_message(message: cl.Message):
 
         try:
             summary = llm_processor.parse_summary(raw_json)
+            cl.user_session.set("summary_object", summary)
         except Exception as e:
             await cl.Message(
                 content=f"Gagal memparse summary: {str(e)}\n\nRaw:\n```\n{raw_json[:500]}\n```"
             ).send()
             return
 
-        await _display_summary(summary, speaker_transcript)
+        await _display_summary(summary)
 
         transcript_path = save_transcript(final_transcript, filename)
         summary_path = save_summary(summary, filename)
 
-        await cl.Message(
-            content=(
-                f"File tersimpan di:\n"
-                f"- Transcript: `{transcript_path}`\n"
-                f"- Summary: `{summary_path}`\n\n"
-                f"Sekarang kamu bisa **tanya apapun tentang isi meeting** — "
-                f"cukup ketik pertanyaanmu di sini!"
-            )
-        ).send()
+        try:
+            pdf_path = save_summary_pdf(summary, filename)
+            pdf_info = f"\n- Summary PDF: `{pdf_path}`"
+        except Exception as e:
+            logger.warning(f"PDF export gagal: {e}")
+            pdf_info = ""
 
-async def _display_summary(summary, speaker_transcript=None):
+        await cl.Message(
+        content=(
+            "Selesai! Kamu sekarang bisa:\n"
+            "- Ketik pertanyaan untuk **tanya jawab** tentang isi meeting\n"
+            "- Ketik `export transcript` untuk download transcript\n"
+            "- Ketik `export summary` untuk download summary PDF"
+        )
+        ).send()  
+
+async def _display_summary(summary):
     output = f"## Ringkasan Meeting\n\n{summary.summary}\n\n"
 
     if summary.topics_discussed:
@@ -210,23 +221,37 @@ async def _display_summary(summary, speaker_transcript=None):
         output += "## Action Items\nTidak ada action items yang terdeteksi.\n"
 
     await cl.Message(content=output).send()
-
-    # Tampilkan speaker transcript kalau ada
-    if speaker_transcript:
-        await cl.Message(
-            content=f"## Transcript per Pembicara\n\n{speaker_transcript}"
-        ).send()
         
 async def _handle_qa(question: str, transcript: str, chat_history: list[dict]):
-    """Handle Q&A mode — jawab pertanyaan tentang isi meeting dengan streaming."""
+    text = question.lower().strip()
 
-    # Tambah pertanyaan user ke history
-    chat_history.append({
-        "role": "user",
-        "content": question
-    })
+    # Export commands
+    if "export transcript" in text:
+        filename = cl.user_session.get("original_filename") or "meeting"
+        path = save_transcript(transcript, filename)
+        await cl.Message(
+            content=f"Transcript tersimpan di `{path}`. Kamu bisa buka file ini langsung dari folder `outputs/`."
+        ).send()
+        return
 
-    # Streaming jawaban
+    if "export summary" in text:
+        filename = cl.user_session.get("original_filename") or "meeting"
+        summary_obj = cl.user_session.get("summary_object")
+        if not summary_obj:
+            await cl.Message(content="Summary belum tersedia, coba upload ulang file meeting.").send()
+            return
+        try:
+            pdf_path = save_summary_pdf(summary_obj, filename)
+            await cl.Message(
+                content=f"Summary PDF tersimpan di `{pdf_path}`."
+            ).send()
+        except Exception as e:
+            logger.error(f"PDF export gagal: {e}")
+            await cl.Message(content=f"Export PDF gagal: {str(e)}").send()
+        return
+
+    # Q&A biasa — lanjut ke LLM
+    chat_history.append({"role": "user", "content": question})
     response_text = ""
     response_msg = cl.Message(content="")
     await response_msg.send()
@@ -235,22 +260,14 @@ async def _handle_qa(question: str, transcript: str, chat_history: list[dict]):
         async for token in llm_processor.answer_question_stream(
             transcript=transcript,
             question=question,
-            history=chat_history[:-1],  # history tanpa pertanyaan terakhir
+            history=chat_history[:-1],
         ):
             response_text += token
             await response_msg.stream_token(token)
-
         await response_msg.update()
-
     except Exception as e:
         await cl.Message(content=f"Gagal menjawab: {str(e)}").send()
         return
 
-    # Simpan jawaban ke history
-    chat_history.append({
-        "role": "assistant",
-        "content": response_text
-    })
-
-    # Update session — simpan max 20 pesan terakhir agar tidak overflow
+    chat_history.append({"role": "assistant", "content": response_text})
     cl.user_session.set("chat_history", chat_history[-20:])

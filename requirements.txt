@@ -10,3 +10,6 @@ torch
 torchaudio
 soundfile
 numpy
+loguru
+markdown
+fpdf2

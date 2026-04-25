@@ -1,6 +1,7 @@
 from pathlib import Path
 from config.settings import settings
-
+from utils.logger import get_logger
+logger = get_logger("diarizer")
 
 class DiarizerService:
 
@@ -10,6 +11,7 @@ class DiarizerService:
     def _load_pipeline(self):
         if self._pipeline is not None:
             return self._pipeline
+        logger.info("Loading pyannote pipeline (pertama kali — bisa beberapa menit)...")
 
         from pyannote.audio import Pipeline
         import torch
@@ -25,6 +27,7 @@ class DiarizerService:
         return self._pipeline
 
     def diarize(self, audio_path: Path) -> list[dict]:
+        logger.info(f"Mulai diarization: {audio_path.name}")
         import torch
         import soundfile as sf
 

@@ -1,7 +1,8 @@
 from pathlib import Path
 from config.settings import settings
 from utils.audio_utils import split_audio_into_chunks, cleanup_chunks
-
+from utils.logger import get_logger
+logger = get_logger("transcriber")
 
 class TranscriberService:
 
@@ -9,16 +10,16 @@ class TranscriberService:
         self.provider = provider or settings.transcription_provider
 
     def transcribe(self, audio_path: Path) -> str:
-        """
-        Entry point utama. Auto-chunking kalau file panjang.
-        Return full transcript sebagai string.
-        """
+        logger.info(f"Mulai transcribe: {audio_path.name}")
         chunks = split_audio_into_chunks(audio_path)
         is_chunked = len(chunks) > 1
+        if is_chunked:
+            logger.info(f"Audio dipotong menjadi {len(chunks)} chunks")
 
         try:
             transcripts = []
             for i, chunk in enumerate(chunks):
+                logger.debug(f"Transcribe chunk {i+1}/{len(chunks)}")
                 if self.provider == "groq":
                     text = self._transcribe_groq(chunk)
                 elif self.provider == "local":
@@ -27,7 +28,9 @@ class TranscriberService:
                     raise ValueError(f"Provider tidak dikenal: {self.provider}")
                 transcripts.append(text)
 
-            return "\n\n".join(transcripts)
+            result = "\n\n".join(transcripts)
+            logger.info(f"Transcribe selesai: {len(result)} karakter")
+            return result
 
         finally:
             if is_chunked:

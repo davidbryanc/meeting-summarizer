@@ -2,7 +2,8 @@ import json
 from config.settings import settings
 from models.schemas import MeetingSummary
 from utils.prompt_utils import load_prompt
-
+from utils.logger import get_logger
+logger = get_logger("llm_processor")
 
 class LLMProcessorService:
 
@@ -17,13 +18,12 @@ class LLMProcessorService:
         """
         Async generator — yield token satu per satu untuk streaming ke Chainlit.
         """
+        logger.info(f"Mulai summarize: {len(transcript)} karakter transcript")
         prompt = load_prompt("summarize.txt", transcript=transcript)
-
         if self.provider == "gemini":
             async for token in self._gemini_stream(prompt):
                 yield token
-        else:
-            raise ValueError(f"Provider tidak dikenal: {self.provider}")
+        logger.info("Summarize selesai")
 
     async def _gemini_stream(self, prompt: str):
         from google import genai
@@ -41,12 +41,14 @@ class LLMProcessorService:
         Parse JSON dari LLM jadi MeetingSummary object.
         Handle kalau LLM nambahin backtick atau teks ekstra.
         """
+        logger.debug("Parsing summary JSON")
         cleaned = raw_json.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            cleaned = "\n".join(lines[1:-1])
-
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+        if start != -1 and end != 0:
+            cleaned = cleaned[start:end]
         data = json.loads(cleaned)
+        logger.info(f"Summary parsed: {len(data.get('action_items', []))} action items")
         return MeetingSummary(**data)
 
     async def answer_question_stream(self, transcript: str, question: str, history: list[dict]):
@@ -54,6 +56,7 @@ class LLMProcessorService:
         Streaming Q&A — jawab pertanyaan user tentang isi meeting.
         history: list of {"role": "user"/"assistant", "content": "..."}
         """
+        logger.info(f"Q&A question: '{question[:50]}...' " if len(question) > 50 else f"Q&A question: '{question}'")
         history_text = "\n".join(
             f"{h['role'].capitalize()}: {h['content']}"
             for h in history[-6:]

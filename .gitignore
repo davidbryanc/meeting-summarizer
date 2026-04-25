@@ -9,6 +9,10 @@ __pycache__/
 # Upload & output (jangan commit file user)
 uploads/
 outputs/
+logs/
+
+# Chainlit
+.chainlit/
 
 # OS
 .DS_Store
