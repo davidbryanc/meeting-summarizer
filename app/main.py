@@ -43,14 +43,15 @@ async def on_chat_start():
 @cl.on_message
 async def on_message(message: cl.Message):
     transcript = cl.user_session.get("transcript")
+    chat_history = cl.user_session.get("chat_history") or []
 
-    # Toggle diarization via chat
+    # Toggle diarization
     if not message.elements:
         text = message.content.lower().strip()
 
         if "aktifkan diarization" in text:
             cl.user_session.set("diarization_enabled", True)
-            await cl.Message(content="Identifikasi pembicara **diaktifkan**. Upload file untuk memproses.").send()
+            await cl.Message(content="Identifikasi pembicara **diaktifkan**.").send()
             return
 
         if "matikan diarization" in text:
@@ -58,17 +59,18 @@ async def on_message(message: cl.Message):
             await cl.Message(content="Identifikasi pembicara **dimatikan**. Pipeline akan lebih cepat.").send()
             return
 
+        # Q&A mode — transcript sudah ada
         if transcript:
-            await cl.Message(
-                content="Mode Q&A akan tersedia segera. Untuk memproses meeting baru, upload file baru."
-            ).send()
-        else:
-            await cl.Message(
-                content="Silakan upload file audio atau video meeting kamu untuk memulai."
-            ).send()
+            await _handle_qa(message.content, transcript, chat_history)
+            return
+
+        # Belum ada transcript
+        await cl.Message(
+            content="Silakan upload file audio atau video meeting kamu untuk memulai."
+        ).send()
         return
 
-    # --- PIPELINE ---
+    # --- PIPELINE: ada file yang diupload ---
     for element in message.elements:
         if not hasattr(element, "path") or not element.path:
             await cl.Message(content="File tidak terbaca, coba upload ulang.").send()
@@ -80,20 +82,17 @@ async def on_message(message: cl.Message):
         with open(element.path, "rb") as f:
             data = f.read()
 
-        # 1. Validasi
         is_valid, error_msg = file_handler.validate(filename, len(data))
         if not is_valid:
             await cl.Message(content=f"File ditolak: {error_msg}").send()
             return
 
-        # 2. Simpan dan extract audio
         saved_path = file_handler.save(filename, data)
         audio_path, original_video = file_handler.prepare_audio(saved_path)
 
         if original_video:
             await cl.Message(content="Audio berhasil di-extract dari video.").send()
 
-        # 3. Transcribe
         await cl.Message(
             content="**Langkah 1/3** — Mentranscribe audio dengan Groq Whisper..."
         ).send()
@@ -109,7 +108,6 @@ async def on_message(message: cl.Message):
             content=f"**Langkah 2/3** — Transcript selesai ({len(transcript)} karakter)."
         ).send()
 
-        # 4. Diarization (opsional)
         speaker_transcript = None
 
         if diarization_enabled:
@@ -123,14 +121,12 @@ async def on_message(message: cl.Message):
             try:
                 from utils.audio_utils import convert_to_wav
                 wav_path = convert_to_wav(audio_path)
-
                 segments = diarizer.diarize(wav_path)
                 speaker_transcript = diarizer.merge_transcript_with_speakers(
                     transcript, segments
                 )
                 speaker_count = len(set(s["speaker"] for s in segments))
 
-                # Cleanup wav sementara kalau beda dari audio_path asli
                 if wav_path != audio_path:
                     from utils.audio_utils import cleanup_file
                     cleanup_file(wav_path)
@@ -142,17 +138,14 @@ async def on_message(message: cl.Message):
                 await cl.Message(
                     content=f"Diarization gagal (pipeline tetap lanjut): {str(e)}"
                 ).send()
-                speaker_transcript = None
 
-        # Cleanup audio setelah semua proses selesai
         file_handler.cleanup(audio_path, original_video)
 
-        # Simpan ke session
         final_transcript = speaker_transcript if speaker_transcript else transcript
         cl.user_session.set("transcript", final_transcript)
         cl.user_session.set("original_filename", filename)
+        cl.user_session.set("chat_history", [])  # reset history untuk meeting baru
 
-        # 5. Summarize
         await cl.Message(
             content="**Langkah 3/3** — Membuat summary dengan Gemini..."
         ).send()
@@ -165,7 +158,6 @@ async def on_message(message: cl.Message):
             await cl.Message(content=f"Summary gagal: {str(e)}").send()
             return
 
-        # 6. Parse dan tampilkan
         try:
             summary = llm_processor.parse_summary(raw_json)
         except Exception as e:
@@ -176,7 +168,6 @@ async def on_message(message: cl.Message):
 
         await _display_summary(summary, speaker_transcript)
 
-        # 7. Simpan ke outputs/
         transcript_path = save_transcript(final_transcript, filename)
         summary_path = save_summary(summary, filename)
 
@@ -185,10 +176,10 @@ async def on_message(message: cl.Message):
                 f"File tersimpan di:\n"
                 f"- Transcript: `{transcript_path}`\n"
                 f"- Summary: `{summary_path}`\n\n"
-                f"Untuk memproses meeting lain, upload file baru."
+                f"Sekarang kamu bisa **tanya apapun tentang isi meeting** — "
+                f"cukup ketik pertanyaanmu di sini!"
             )
         ).send()
-
 
 async def _display_summary(summary, speaker_transcript=None):
     output = f"## Ringkasan Meeting\n\n{summary.summary}\n\n"
@@ -225,3 +216,41 @@ async def _display_summary(summary, speaker_transcript=None):
         await cl.Message(
             content=f"## Transcript per Pembicara\n\n{speaker_transcript}"
         ).send()
+        
+async def _handle_qa(question: str, transcript: str, chat_history: list[dict]):
+    """Handle Q&A mode — jawab pertanyaan tentang isi meeting dengan streaming."""
+
+    # Tambah pertanyaan user ke history
+    chat_history.append({
+        "role": "user",
+        "content": question
+    })
+
+    # Streaming jawaban
+    response_text = ""
+    response_msg = cl.Message(content="")
+    await response_msg.send()
+
+    try:
+        async for token in llm_processor.answer_question_stream(
+            transcript=transcript,
+            question=question,
+            history=chat_history[:-1],  # history tanpa pertanyaan terakhir
+        ):
+            response_text += token
+            await response_msg.stream_token(token)
+
+        await response_msg.update()
+
+    except Exception as e:
+        await cl.Message(content=f"Gagal menjawab: {str(e)}").send()
+        return
+
+    # Simpan jawaban ke history
+    chat_history.append({
+        "role": "assistant",
+        "content": response_text
+    })
+
+    # Update session — simpan max 20 pesan terakhir agar tidak overflow
+    cl.user_session.set("chat_history", chat_history[-20:])

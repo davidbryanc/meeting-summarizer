@@ -34,9 +34,9 @@ GEMINI_API_KEY=      # dari aistudio.google.com
 - [x] Day 2 — Audio/video ingestion pipeline
 - [x] Day 3 — Speech-to-text dengan Groq Whisper
 - [x] Day 4 — LLM summarization dengan streaming
-- [ ] Day 5 — Chainlit UI polish & end-to-end integration
-- [ ] Day 6 — Speaker diarization
-- [ ] Day 7 — Q&A mode
+- [x] Day 5 — Chainlit UI polish & end-to-end integration
+- [x] Day 6 — Speaker diarization
+- [x] Day 7 — Q&A mode
 - [ ] Day 8 — Logging & export
 - [ ] Day 9 — Docker & Railway deploy
 - [ ] Day 10 — Documentation & portfolio
