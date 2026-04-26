@@ -6,8 +6,6 @@ pydub==0.25.1
 groq==1.2.0
 google-genai==1.73.1
 pyannote.audio==4.0.4
-torch==2.11.0
-torchaudio==2.11.0
 soundfile==0.13.1
 numpy==2.4.4
 loguru==0.7.3
