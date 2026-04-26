@@ -115,33 +115,34 @@ async def on_message(message: cl.Message):
         speaker_transcript = None
 
         if diarization_enabled:
-            await cl.Message(
-                content=(
-                    "**Langkah 2.5/3** — Mengidentifikasi pembicara...\n"
-                    "_(proses ini bisa memakan waktu beberapa menit di CPU)_"
-                )
-            ).send()
-
-            try:
-                from utils.audio_utils import convert_to_wav
-                wav_path = convert_to_wav(audio_path)
-                segments = diarizer.diarize(wav_path)
-                speaker_transcript = diarizer.merge_transcript_with_speakers(
-                    transcript, segments
-                )
-                speaker_count = len(set(s["speaker"] for s in segments))
-
-                if wav_path != audio_path:
-                    from utils.audio_utils import cleanup_file
-                    cleanup_file(wav_path)
-
+            if not diarizer.is_available():
                 await cl.Message(
-                    content=f"Ditemukan **{speaker_count} pembicara** dalam rekaman."
+                    content="Diarization tidak tersedia di environment ini. Fitur ini tersedia di local deployment."
                 ).send()
-            except Exception as e:
+            else:
                 await cl.Message(
-                    content=f"Diarization gagal (pipeline tetap lanjut): {str(e)}"
+                    content=(
+                        "**Langkah 2.5/3** — Mengidentifikasi pembicara...\n"
+                        "_(proses ini bisa memakan waktu beberapa menit di CPU)_"
+                    )
                 ).send()
+                try:
+                    from utils.audio_utils import convert_to_wav, cleanup_file
+                    wav_path = convert_to_wav(audio_path)
+                    segments = diarizer.diarize(wav_path)
+                    speaker_transcript = diarizer.merge_transcript_with_speakers(
+                        transcript, segments
+                    )
+                    speaker_count = len(set(s["speaker"] for s in segments))
+                    if wav_path != audio_path:
+                        cleanup_file(wav_path)
+                    await cl.Message(
+                        content=f"Ditemukan **{speaker_count} pembicara** dalam rekaman."
+                    ).send()
+                except Exception as e:
+                    await cl.Message(
+                        content=f"Diarization gagal (pipeline tetap lanjut): {str(e)}"
+                    ).send()
 
         file_handler.cleanup(audio_path, original_video)
 

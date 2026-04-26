@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Railway force rebuild - v2
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
@@ -9,11 +8,6 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements.txt .
-
-RUN pip install --no-cache-dir \
-    torch==2.6.0+cpu \
-    torchaudio==2.6.0+cpu \
-    --index-url https://download.pytorch.org/whl/cpu
 
 RUN pip install --no-cache-dir -r requirements.txt
 
