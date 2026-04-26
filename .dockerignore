@@ -4,9 +4,10 @@ venv/
 __pycache__/
 *.pyc
 .git/
-.gitignore
 uploads/
 outputs/
 logs/
 .chainlit/
 *.log
+scripts/
+~/.cache/
