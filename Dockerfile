@@ -1,5 +1,6 @@
 FROM python:3.11-slim
 
+# Railway force rebuild - v2
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     git \
