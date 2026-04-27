@@ -2,44 +2,51 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import asyncio
+import httpx
 import chainlit as cl
-from services.file_handler import FileHandlerService
-from services.transcriber import TranscriberService
-from services.llm_processor import LLMProcessorService
-from services.diarizer import DiarizerService
-from utils.export import save_transcript, save_summary
-from config.settings import settings
-from utils.export import save_transcript, save_summary, save_summary_pdf
 from utils.logger import get_logger
+from utils.export import save_transcript, save_summary, save_summary_pdf
+from services.llm_processor import LLMProcessorService
+from config.settings import settings
 
-logger = get_logger("main")
-file_handler = FileHandlerService()
-transcriber = TranscriberService()
+logger = get_logger("chainlit")
 llm_processor = LLMProcessorService()
-diarizer = DiarizerService()
+
+API_BASE = "http://localhost:8001"
+
+
+async def poll_job(client: httpx.AsyncClient, job_id: str, timeout: int = 300) -> dict:
+    """Poll job status sampai selesai atau timeout."""
+    elapsed = 0
+    while elapsed < timeout:
+        resp = await client.get(f"{API_BASE}/jobs/{job_id}")
+        job = resp.json()
+        if job["status"] in ("completed", "failed"):
+            return job
+        await asyncio.sleep(2)
+        elapsed += 2
+    raise TimeoutError(f"Job {job_id} timeout setelah {timeout} detik")
 
 
 @cl.on_chat_start
 async def on_chat_start():
-    logger.info("Session baru dimulai")
     cl.user_session.set("transcript", None)
     cl.user_session.set("original_filename", None)
     cl.user_session.set("chat_history", [])
-    cl.user_session.set("diarization_enabled", settings.diarization_enabled)
-
-    diarization_status = "aktif" if settings.diarization_enabled else "nonaktif"
+    cl.user_session.set("diarization_enabled", True)
+    cl.user_session.set("summary_object", None)
+    logger.info("Session baru dimulai")
 
     await cl.Message(
         content=(
             "Halo! Selamat datang di **Meeting Summarizer**.\n\n"
             "Upload file rekaman meeting kamu untuk mendapatkan:\n"
             "- Transcript lengkap\n"
-            "- Identifikasi pembicara (diarization)\n"
             "- Ringkasan otomatis\n"
             "- Key decisions & action items\n\n"
-            f"Format: `mp3`, `mp4`, `wav`, `m4a` — "
-            f"Identifikasi pembicara: **{diarization_status}**\n\n"
-            "Ketik `aktifkan diarization` atau `matikan diarization` untuk toggle."
+            "Format: `mp3`, `mp4`, `wav`, `m4a` — "
+            "Ketik `export transcript` atau `export summary` setelah proses selesai."
         )
     ).send()
 
@@ -49,7 +56,6 @@ async def on_message(message: cl.Message):
     transcript = cl.user_session.get("transcript")
     chat_history = cl.user_session.get("chat_history") or []
 
-    # Toggle diarization
     if not message.elements:
         text = message.content.lower().strip()
 
@@ -60,138 +66,114 @@ async def on_message(message: cl.Message):
 
         if "matikan diarization" in text:
             cl.user_session.set("diarization_enabled", False)
-            await cl.Message(content="Identifikasi pembicara **dimatikan**. Pipeline akan lebih cepat.").send()
+            await cl.Message(content="Identifikasi pembicara **dimatikan**.").send()
             return
 
-        # Q&A mode — transcript sudah ada
         if transcript:
             await _handle_qa(message.content, transcript, chat_history)
             return
 
-        # Belum ada transcript
         await cl.Message(
-            content="Silakan upload file audio atau video meeting kamu untuk memulai."
+            content="Silakan upload file audio atau video meeting kamu."
         ).send()
         return
 
-    # --- PIPELINE: ada file yang diupload ---
+    # --- PIPELINE via FastAPI ---
     for element in message.elements:
         if not hasattr(element, "path") or not element.path:
             await cl.Message(content="File tidak terbaca, coba upload ulang.").send()
             return
 
         filename = element.name
-        diarization_enabled = cl.user_session.get("diarization_enabled")
 
         with open(element.path, "rb") as f:
             data = f.read()
 
-        is_valid, error_msg = file_handler.validate(filename, len(data))
-        if not is_valid:
-            await cl.Message(content=f"File ditolak: {error_msg}").send()
-            return
-
-        saved_path = file_handler.save(filename, data)
-        audio_path, original_video = file_handler.prepare_audio(saved_path)
-
-        if original_video:
-            await cl.Message(content="Audio berhasil di-extract dari video.").send()
-
+        # 1. Kirim ke FastAPI /transcribe
         await cl.Message(
-            content="**Langkah 1/3** — Mentranscribe audio dengan Groq Whisper..."
+            content="**Langkah 1/3** — Mengirim audio ke API untuk transcribe..."
         ).send()
 
+        async with httpx.AsyncClient(timeout=300) as client:
+            try:
+                resp = await client.post(
+                    f"{API_BASE}/transcribe",
+                    files={"file": (filename, data, "audio/mpeg")},
+                )
+                if resp.status_code != 200:
+                    await cl.Message(content=f"API error: {resp.text}").send()
+                    return
+
+                job = resp.json()
+                job_id = job["job_id"]
+                logger.info(f"Transcribe job dibuat: {job_id}")
+
+            except Exception as e:
+                await cl.Message(content=f"Gagal kirim ke API: {str(e)}").send()
+                return
+
+            # 2. Poll sampai selesai
+            await cl.Message(
+                content="**Langkah 1/3** — Transcribing via Groq Whisper..."
+            ).send()
+
+            try:
+                result = await poll_job(client, job_id)
+            except TimeoutError:
+                await cl.Message(content="Transcribe timeout. Coba file yang lebih pendek.").send()
+                return
+
+            if result["status"] == "failed":
+                await cl.Message(content=f"Transcribe gagal: {result.get('error')}").send()
+                return
+
+            transcript = result["result"]["transcript"]
+            char_count = result["result"]["char_count"]
+
+            cl.user_session.set("transcript", transcript)
+            cl.user_session.set("original_filename", filename)
+            cl.user_session.set("chat_history", [])
+
+            await cl.Message(
+                content=f"**Langkah 2/3** — Transcript selesai ({char_count} karakter). Membuat summary..."
+            ).send()
+
+            # 3. Summarize dengan streaming langsung dari llm_processor
+            # Tetap pakai streaming direct — lebih responsif dari polling
+            raw_json = ""
+            try:
+                async for token in llm_processor.summarize_stream(transcript):
+                    raw_json += token
+            except Exception as e:
+                await cl.Message(content=f"Summary gagal: {str(e)}").send()
+                return
+
+        # 4. Parse dan tampilkan
         try:
-            transcript = transcriber.transcribe(audio_path)
-        except Exception as e:
-            await cl.Message(content=f"Transcribe gagal: {str(e)}").send()
-            file_handler.cleanup(audio_path, original_video)
-            return
-
-        await cl.Message(
-            content=f"**Langkah 2/3** — Transcript selesai ({len(transcript)} karakter)."
-        ).send()
-
-        speaker_transcript = None
-
-        if diarization_enabled:
-            if not diarizer.is_available():
-                await cl.Message(
-                    content="Diarization tidak tersedia di environment ini. Fitur ini tersedia di local deployment."
-                ).send()
-            else:
-                await cl.Message(
-                    content=(
-                        "**Langkah 2.5/3** — Mengidentifikasi pembicara...\n"
-                        "_(proses ini bisa memakan waktu beberapa menit di CPU)_"
-                    )
-                ).send()
-                try:
-                    from utils.audio_utils import convert_to_wav, cleanup_file
-                    wav_path = convert_to_wav(audio_path)
-                    segments = diarizer.diarize(wav_path)
-                    speaker_transcript = diarizer.merge_transcript_with_speakers(
-                        transcript, segments
-                    )
-                    speaker_count = len(set(s["speaker"] for s in segments))
-                    if wav_path != audio_path:
-                        cleanup_file(wav_path)
-                    await cl.Message(
-                        content=f"Ditemukan **{speaker_count} pembicara** dalam rekaman."
-                    ).send()
-                except Exception as e:
-                    await cl.Message(
-                        content=f"Diarization gagal (pipeline tetap lanjut): {str(e)}"
-                    ).send()
-
-        file_handler.cleanup(audio_path, original_video)
-
-        final_transcript = speaker_transcript if speaker_transcript else transcript
-        cl.user_session.set("transcript", final_transcript)
-        cl.user_session.set("original_filename", filename)
-        cl.user_session.set("chat_history", [])  # reset history untuk meeting baru
-
-        await cl.Message(
-            content="**Langkah 3/3** — Membuat summary dengan Gemini..."
-        ).send()
-
-        raw_json = ""
-        try:
-            async for token in llm_processor.summarize_stream(final_transcript):
-                raw_json += token
-        except Exception as e:
-            await cl.Message(content=f"Summary gagal: {str(e)}").send()
-            return
-
-        try:
+            from services.llm_processor import LLMProcessorService
             summary = llm_processor.parse_summary(raw_json)
             cl.user_session.set("summary_object", summary)
         except Exception as e:
             await cl.Message(
-                content=f"Gagal memparse summary: {str(e)}\n\nRaw:\n```\n{raw_json[:500]}\n```"
+                content=f"Gagal parse summary: {str(e)}\n\nRaw:\n```\n{raw_json[:300]}\n```"
             ).send()
             return
 
         await _display_summary(summary)
 
-        transcript_path = save_transcript(final_transcript, filename)
-        summary_path = save_summary(summary, filename)
-
-        try:
-            pdf_path = save_summary_pdf(summary, filename)
-            pdf_info = f"\n- Summary PDF: `{pdf_path}`"
-        except Exception as e:
-            logger.warning(f"PDF export gagal: {e}")
-            pdf_info = ""
+        # 5. Auto-save ke outputs/
+        save_transcript(transcript, filename)
+        save_summary(summary, filename)
 
         await cl.Message(
-        content=(
-            "Selesai! Kamu sekarang bisa:\n"
-            "- Ketik pertanyaan untuk **tanya jawab** tentang isi meeting\n"
-            "- Ketik `export transcript` untuk download transcript\n"
-            "- Ketik `export summary` untuk download summary PDF"
-        )
-        ).send()  
+            content=(
+                "Selesai! Kamu sekarang bisa:\n"
+                "- Ketik pertanyaan untuk **tanya jawab** tentang isi meeting\n"
+                "- Ketik `export transcript` untuk download transcript\n"
+                "- Ketik `export summary` untuk download summary PDF"
+            )
+        ).send()
+
 
 async def _display_summary(summary):
     output = f"## Ringkasan Meeting\n\n{summary.summary}\n\n"
@@ -222,36 +204,30 @@ async def _display_summary(summary):
         output += "## Action Items\nTidak ada action items yang terdeteksi.\n"
 
     await cl.Message(content=output).send()
-        
+
+
 async def _handle_qa(question: str, transcript: str, chat_history: list[dict]):
     text = question.lower().strip()
 
-    # Export commands
     if "export transcript" in text:
         filename = cl.user_session.get("original_filename") or "meeting"
         path = save_transcript(transcript, filename)
-        await cl.Message(
-            content=f"Transcript tersimpan di `{path}`. Kamu bisa buka file ini langsung dari folder `outputs/`."
-        ).send()
+        await cl.Message(content=f"Transcript tersimpan di `{path}`.").send()
         return
 
     if "export summary" in text:
         filename = cl.user_session.get("original_filename") or "meeting"
         summary_obj = cl.user_session.get("summary_object")
         if not summary_obj:
-            await cl.Message(content="Summary belum tersedia, coba upload ulang file meeting.").send()
+            await cl.Message(content="Summary belum tersedia.").send()
             return
         try:
             pdf_path = save_summary_pdf(summary_obj, filename)
-            await cl.Message(
-                content=f"Summary PDF tersimpan di `{pdf_path}`."
-            ).send()
+            await cl.Message(content=f"Summary PDF tersimpan di `{pdf_path}`.").send()
         except Exception as e:
-            logger.error(f"PDF export gagal: {e}")
             await cl.Message(content=f"Export PDF gagal: {str(e)}").send()
         return
 
-    # Q&A biasa — lanjut ke LLM
     chat_history.append({"role": "user", "content": question})
     response_text = ""
     response_msg = cl.Message(content="")
