@@ -1,4 +1,6 @@
 -r requirements.txt
+whisperx==3.8.5
+torch==2.8.0
+torchaudio==2.8.0
 pyannote.audio==4.0.4
-torch==2.6.0+cpu
-torchaudio==2.6.0+cpu
+faster-whisper==1.2.1

@@ -8,9 +8,16 @@ class TranscriberService:
 
     def __init__(self, provider: str = None):
         self.provider = provider or settings.transcription_provider
+        self._whisperx = None
+
+    def _get_whisperx(self):
+        if self._whisperx is None:
+            from services.whisperx_transcriber import WhisperXTranscriber
+            self._whisperx = WhisperXTranscriber(model_size="base")
+        return self._whisperx
 
     def transcribe(self, audio_path: Path) -> str:
-        logger.info(f"Mulai transcribe: {audio_path.name}")
+        logger.info(f"Mulai transcribe: {audio_path.name} via {self.provider}")
         chunks = split_audio_into_chunks(audio_path)
         is_chunked = len(chunks) > 1
         if is_chunked:
@@ -22,6 +29,8 @@ class TranscriberService:
                 logger.debug(f"Transcribe chunk {i+1}/{len(chunks)}")
                 if self.provider == "groq":
                     text = self._transcribe_groq(chunk)
+                elif self.provider == "whisperx":
+                    text = self._get_whisperx().transcribe(chunk)
                 elif self.provider == "local":
                     text = self._transcribe_local(chunk)
                 else:
@@ -36,16 +45,30 @@ class TranscriberService:
             if is_chunked:
                 cleanup_chunks(chunks)
 
+    def transcribe_with_timestamps(self, audio_path: Path) -> dict:
+        """
+        Return word-level timestamps — hanya tersedia untuk WhisperX.
+        Groq tidak support ini, jadi fallback ke plain transcribe.
+        """
+        if self.provider == "whisperx":
+            return self._get_whisperx().transcribe_with_timestamps(audio_path)
+
+        logger.warning(f"Provider '{self.provider}' tidak support word timestamps, fallback ke plain transcribe")
+        text = self.transcribe(audio_path)
+        return {
+            "segments": [{"text": text, "start": 0, "end": 0}],
+            "language": "unknown",
+            "word_segments": [],
+        }
+
     def _transcribe_groq(self, audio_path: Path) -> str:
         from groq import Groq
         client = Groq(api_key=settings.groq_api_key)
-
         with open(audio_path, "rb") as f:
             result = client.audio.transcriptions.create(
                 model="whisper-large-v3",
                 file=f,
                 response_format="text",
-                # language="en",  # nyalakan kalau mau fokus di 1 bahasa
             )
         return result
 

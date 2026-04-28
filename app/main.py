@@ -10,7 +10,16 @@ from utils.export import save_transcript, save_summary, save_summary_pdf
 from services.llm_processor import LLMProcessorService
 from config.settings import settings
 
+from services.diarizer import DiarizerService
+from services.transcriber import TranscriberService
+from services.file_handler import FileHandlerService
+from utils.audio_utils import convert_to_wav, cleanup_file
+
 logger = get_logger("chainlit")
+
+file_handler = FileHandlerService()
+diarizer = DiarizerService()
+transcriber_service = TranscriberService()
 llm_processor = LLMProcessorService()
 
 API_BASE = "http://localhost:8001"
@@ -135,8 +144,65 @@ async def on_message(message: cl.Message):
             cl.user_session.set("chat_history", [])
 
             await cl.Message(
-                content=f"**Langkah 2/3** — Transcript selesai ({char_count} karakter). Membuat summary..."
+                content=f"**Langkah 2/3** — Transcript selesai ({char_count} karakter)."
             ).send()
+
+            # Diarization dengan WhisperX word timestamps
+            diarization_enabled = cl.user_session.get("diarization_enabled")
+            speaker_transcript = None
+
+            if diarization_enabled and diarizer.is_available():
+                await cl.Message(
+                    content=(
+                        "**Langkah 2.5/3** — Mengidentifikasi pembicara dengan word-level alignment...\n"
+                        "_(WhisperX + pyannote — lebih akurat dari sebelumnya)_"
+                    )
+                ).send()
+
+                try:
+                    # Simpan audio sementara untuk WhisperX dan diarization
+                    saved_path_temp = file_handler.save(filename, data)
+                    audio_path_temp, original_video_temp = file_handler.prepare_audio(saved_path_temp)
+                    wav_path = convert_to_wav(audio_path_temp)
+
+                    # WhisperX word timestamps
+                    wx_result = transcriber_service.transcribe_with_timestamps(audio_path_temp)
+                    word_segments = wx_result.get("word_segments", [])
+
+                    # Diarization
+                    diar_segments = diarizer.diarize(wav_path)
+
+                    if wav_path != audio_path_temp:
+                        cleanup_file(wav_path)
+                    file_handler.cleanup(audio_path_temp, original_video_temp)
+
+                    speaker_count = len(set(s["speaker"] for s in diar_segments))
+
+                    if word_segments:
+                        # WhisperX path — word-level accuracy
+                        words_with_speakers = diarizer.assign_speakers_to_words(
+                            word_segments, diar_segments
+                        )
+                        speaker_transcript = diarizer.build_speaker_transcript(words_with_speakers)
+                        await cl.Message(
+                            content=f"Ditemukan **{speaker_count} pembicara** — transcript per kata di-assign ke speaker."
+                        ).send()
+                    else:
+                        # Fallback heuristik kalau word segments tidak tersedia
+                        speaker_transcript = diarizer.merge_transcript_with_speakers(
+                            transcript, diar_segments
+                        )
+                        await cl.Message(
+                            content=f"Ditemukan **{speaker_count} pembicara** (mode heuristik)."
+                        ).send()
+
+                    if speaker_transcript:
+                        cl.user_session.set("transcript", speaker_transcript)
+
+                except Exception as e:
+                    await cl.Message(
+                        content=f"Diarization gagal (pipeline tetap lanjut): {str(e)}"
+                    ).send()
 
             # 3. Summarize dengan streaming langsung dari llm_processor
             # Tetap pakai streaming direct — lebih responsif dari polling
@@ -148,31 +214,31 @@ async def on_message(message: cl.Message):
                 await cl.Message(content=f"Summary gagal: {str(e)}").send()
                 return
 
-        # 4. Parse dan tampilkan
-        try:
-            from services.llm_processor import LLMProcessorService
-            summary = llm_processor.parse_summary(raw_json)
-            cl.user_session.set("summary_object", summary)
-        except Exception as e:
+            # 4. Parse dan tampilkan
+            try:
+                from services.llm_processor import LLMProcessorService
+                summary = llm_processor.parse_summary(raw_json)
+                cl.user_session.set("summary_object", summary)
+            except Exception as e:
+                await cl.Message(
+                    content=f"Gagal parse summary: {str(e)}\n\nRaw:\n```\n{raw_json[:300]}\n```"
+                ).send()
+                return
+
+            await _display_summary(summary)
+
+            # 5. Auto-save ke outputs/
+            save_transcript(transcript, filename)
+            save_summary(summary, filename)
+
             await cl.Message(
-                content=f"Gagal parse summary: {str(e)}\n\nRaw:\n```\n{raw_json[:300]}\n```"
+                content=(
+                    "Selesai! Kamu sekarang bisa:\n"
+                    "- Ketik pertanyaan untuk **tanya jawab** tentang isi meeting\n"
+                    "- Ketik `export transcript` untuk download transcript\n"
+                    "- Ketik `export summary` untuk download summary PDF"
+                )
             ).send()
-            return
-
-        await _display_summary(summary)
-
-        # 5. Auto-save ke outputs/
-        save_transcript(transcript, filename)
-        save_summary(summary, filename)
-
-        await cl.Message(
-            content=(
-                "Selesai! Kamu sekarang bisa:\n"
-                "- Ketik pertanyaan untuk **tanya jawab** tentang isi meeting\n"
-                "- Ketik `export transcript` untuk download transcript\n"
-                "- Ketik `export summary` untuk download summary PDF"
-            )
-        ).send()
 
 
 async def _display_summary(summary):
