@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     llm_provider: str = "gemini"
     diarization_enabled: bool = True
     whisperx_for_alignment: bool = True
+    redis_url: str = "redis://localhost:6379"
 
     class Config:
         env_file = ".env"

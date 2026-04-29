@@ -116,3 +116,35 @@ class WhisperXTranscriber:
             seg.get("text", "").strip()
             for seg in result["segments"]
         )
+        
+    def get_word_timestamps_only(self, audio_path: Path, existing_transcript: str) -> dict:
+        """
+        Pakai WhisperX hanya untuk timestamps — tidak transcribe ulang.
+        Transcript teks tetap dari Groq, tapi alignment dari WhisperX.
+        """
+        import whisperx
+
+        self._load_model()
+        audio = whisperx.load_audio(str(audio_path))
+
+        # Force transcribe singkat hanya untuk detect bahasa dan timestamps
+        result = self._model.transcribe(audio, batch_size=8)
+        language = result.get("language", "en")
+
+        self._load_align_model(language)
+
+        if self._align_model is not None:
+            aligned = whisperx.align(
+                result["segments"],
+                self._align_model,
+                self._align_metadata,
+                audio,
+                device="cpu",
+                return_char_alignments=False,
+            )
+            return {
+                "word_segments": aligned.get("word_segments", []),
+                "language": language,
+            }
+
+        return {"word_segments": [], "language": language}

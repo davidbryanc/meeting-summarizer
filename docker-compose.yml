@@ -1,4 +1,44 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  api:
+    build: .
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8001
+    depends_on:
+      - redis
+    volumes:
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379
+    command: python -m arq workers.transcribe_worker.WorkerSettings
+    depends_on:
+      - redis
+    volumes:
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
   app:
     build: .
     ports:
@@ -7,7 +47,11 @@ services:
       - .env
     environment:
       - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379
     command: chainlit run app/main.py --host 0.0.0.0 --port 8000
+    depends_on:
+      - api
+      - redis
     volumes:
       - ./outputs:/app/outputs
       - ./logs:/app/logs
