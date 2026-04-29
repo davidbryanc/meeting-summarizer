@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     transcription_provider: str = "groq"
     llm_provider: str = "gemini"
     diarization_enabled: bool = True
+    whisperx_for_alignment: bool = True
 
     class Config:
         env_file = ".env"
