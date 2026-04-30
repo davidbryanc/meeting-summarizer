@@ -1,6 +1,6 @@
 # Meeting Summarizer AI
 
-[![CI](https://github.com/davidbryanc/meeting-summarizer/actions/workflows/ci.yml/badge.svg)]
+![CI](https://github.com/davidbryanc/meeting-summarizer/actions/workflows/ci.yml/badge.svg)
 ![CD](https://github.com/davidbryanc/meeting-summarizer/actions/workflows/cd.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)

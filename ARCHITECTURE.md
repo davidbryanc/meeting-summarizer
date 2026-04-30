@@ -153,6 +153,6 @@ job metadata juga dibersihkan otomatis.
 | API | FastAPI | Flask, Django | FastAPI async-native dan auto Swagger, Flask butuh extension tambahan |
 | Queue | ARQ | Celery, RQ | ARQ async-native dan lebih ringan dari Celery untuk project ini |
 | Transcription | Groq Whisper | OpenAI Whisper API, local Whisper | Groq gratis dan 10x lebih cepat |
-| LLM | Gemini 2.0 Flash | GPT-4o, Claude | Gemini gratis tier paling generous untuk development |
+| LLM | Gemini 2.5 Flash | GPT-4o, Claude | Gemini gratis tier paling generous untuk development |
 | Diarization | pyannote | SpeechBrain, NeMo | pyannote memiliki DER terendah di open-source |
 | Linter | ruff | flake8, pylint | ruff 100x lebih cepat, menggabungkan banyak tools |
