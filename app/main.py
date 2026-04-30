@@ -9,7 +9,6 @@ import chainlit as cl
 from utils.logger import get_logger
 from utils.export import save_transcript, save_summary, save_summary_pdf
 from services.llm_processor import LLMProcessorService
-from config.settings import settings
 
 from services.diarizer import DiarizerService
 from services.transcriber import TranscriberService

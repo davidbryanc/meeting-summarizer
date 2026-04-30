@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch
 from services.llm_processor import LLMProcessorService
 from models.schemas import MeetingSummary
 

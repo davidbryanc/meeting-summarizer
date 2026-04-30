@@ -4,7 +4,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
-from arq import cron
 from arq.connections import RedisSettings
 from config.settings import settings
 from services.transcriber import TranscriberService

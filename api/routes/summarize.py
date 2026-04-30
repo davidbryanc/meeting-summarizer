@@ -1,4 +1,3 @@
-import asyncio
 from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from models.api_schemas import SummarizeRequest, SummarizeResponse, JobStatus

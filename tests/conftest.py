@@ -2,7 +2,6 @@ import pytest
 import sys
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

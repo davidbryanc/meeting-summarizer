@@ -1,9 +1,7 @@
-import uuid
-from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from arq.connections import ArqRedis, create_pool, RedisSettings
 from models.api_schemas import TranscribeResponse, JobStatus
-from api.job_store import create_job, get_redis
+from api.job_store import create_job
 from services.file_handler import FileHandlerService
 from config.settings import settings
 from utils.logger import get_logger
