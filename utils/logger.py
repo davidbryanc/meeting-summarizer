@@ -23,5 +23,6 @@ logger.add(
     encoding="utf-8",
 )
 
+
 def get_logger(name: str):
     return logger.bind(name=name)

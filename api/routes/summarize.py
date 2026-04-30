@@ -41,7 +41,9 @@ async def summarize_stream(request: SummarizeRequest):
 async def _run_summarize(job_id: str, transcript: str):
     """Background task untuk summarize non-streaming."""
     try:
-        update_job(job_id, status=JobStatus.processing, progress=10, message="Summarizing...")
+        update_job(
+            job_id, status=JobStatus.processing, progress=10, message="Summarizing..."
+        )
 
         raw_json = ""
         async for token in llm_processor.summarize_stream(transcript):

@@ -18,11 +18,14 @@ async def get_redis() -> Redis:
 async def create_job() -> str:
     redis = await get_redis()
     job_id = str(uuid.uuid4())
-    await redis.hset(f"job:{job_id}", mapping={
-        "status": "pending",
-        "progress": "0",
-        "message": "Job created",
-    })
+    await redis.hset(
+        f"job:{job_id}",
+        mapping={
+            "status": "pending",
+            "progress": "0",
+            "message": "Job created",
+        },
+    )
     await redis.expire(f"job:{job_id}", 3600)
     logger.debug(f"Job created: {job_id}")
     return job_id

@@ -34,8 +34,7 @@ class WhisperXTranscriber:
             language=self.language,
         )
         logger.info("WhisperX model loaded")
-        
-    
+
     def _load_align_model(self, language_code: str):
         import whisperx
         import torch
@@ -47,7 +46,10 @@ class WhisperXTranscriber:
             "zh": "jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn",
         }
 
-        if self._align_model is None or getattr(self, "_align_lang", None) != language_code:
+        if (
+            self._align_model is None
+            or getattr(self, "_align_lang", None) != language_code
+        ):
             custom_model = LANGUAGE_MODEL_MAP.get(language_code)
             logger.info(f"Loading alignment model untuk bahasa: {language_code}")
             try:
@@ -59,7 +61,9 @@ class WhisperXTranscriber:
                 self._align_lang = language_code
                 logger.info(f"Alignment model loaded: {custom_model or 'default'}")
             except Exception as e:
-                logger.warning(f"Alignment model tidak tersedia untuk '{language_code}': {e}")
+                logger.warning(
+                    f"Alignment model tidak tersedia untuk '{language_code}': {e}"
+                )
                 self._align_model = None
                 self._align_metadata = None
 
@@ -112,12 +116,11 @@ class WhisperXTranscriber:
     def transcribe(self, audio_path: Path) -> str:
         """Simple transcribe — return plain text tanpa timestamps."""
         result = self.transcribe_with_timestamps(audio_path)
-        return " ".join(
-            seg.get("text", "").strip()
-            for seg in result["segments"]
-        )
-        
-    def get_word_timestamps_only(self, audio_path: Path, existing_transcript: str) -> dict:
+        return " ".join(seg.get("text", "").strip() for seg in result["segments"])
+
+    def get_word_timestamps_only(
+        self, audio_path: Path, existing_transcript: str
+    ) -> dict:
         """
         Pakai WhisperX hanya untuk timestamps — tidak transcribe ulang.
         Transcript teks tetap dari Groq, tapi alignment dari WhisperX.

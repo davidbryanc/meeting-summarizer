@@ -5,6 +5,7 @@ from utils.logger import get_logger
 logger = get_logger("export")
 OUTPUTS_DIR = Path("outputs")
 
+
 def save_transcript(transcript: str, filename: str) -> Path:
     OUTPUTS_DIR.mkdir(exist_ok=True)
     stem = Path(filename).stem
@@ -12,6 +13,7 @@ def save_transcript(transcript: str, filename: str) -> Path:
     output_path.write_text(transcript, encoding="utf-8")
     logger.info(f"Transcript disimpan: {output_path}")
     return output_path
+
 
 def save_summary(summary: MeetingSummary, filename: str) -> Path:
     OUTPUTS_DIR.mkdir(exist_ok=True)
@@ -37,9 +39,9 @@ def save_summary(summary: MeetingSummary, filename: str) -> Path:
         lines.append("## Action Items\n")
         for item in summary.action_items:
             assignee = f" — {item.assignee}" if item.assignee else ""
-            priority_label = {
-                "high": "High", "medium": "Medium", "low": "Low"
-            }.get(item.priority, item.priority)
+            priority_label = {"high": "High", "medium": "Medium", "low": "Low"}.get(
+                item.priority, item.priority
+            )
             lines.append(f"- [{priority_label}]{assignee}: {item.task}")
     else:
         lines.append("## Action Items\n\nTidak ada action items yang terdeteksi.")
@@ -47,6 +49,7 @@ def save_summary(summary: MeetingSummary, filename: str) -> Path:
     output_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info(f"Summary markdown disimpan: {output_path}")
     return output_path
+
 
 def save_summary_pdf(summary: MeetingSummary, filename: str) -> Path:
     from fpdf import FPDF
@@ -57,8 +60,14 @@ def save_summary_pdf(summary: MeetingSummary, filename: str) -> Path:
 
     def clean(text: str) -> str:
         replacements = {
-            "—": "-", "–": "-", "\u2019": "'", "\u2018": "'",
-            "\u201c": '"', "\u201d": '"', "…": "...", "\u2022": "-",
+            "—": "-",
+            "–": "-",
+            "\u2019": "'",
+            "\u2018": "'",
+            "\u201c": '"',
+            "\u201d": '"',
+            "…": "...",
+            "\u2022": "-",
         }
         for k, v in replacements.items():
             text = text.replace(k, v)

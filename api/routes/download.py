@@ -17,7 +17,9 @@ async def download_file(filename: str):
     file_path = OUTPUTS_DIR / safe_name
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail=f"File tidak ditemukan: {safe_name}")
+        raise HTTPException(
+            status_code=404, detail=f"File tidak ditemukan: {safe_name}"
+        )
 
     media_type = "application/pdf" if safe_name.endswith(".pdf") else "text/plain"
 

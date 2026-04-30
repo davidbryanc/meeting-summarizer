@@ -2,10 +2,11 @@ from pathlib import Path
 from config.settings import settings
 from utils.audio_utils import split_audio_into_chunks, cleanup_chunks
 from utils.logger import get_logger
+
 logger = get_logger("transcriber")
 
-class TranscriberService:
 
+class TranscriberService:
     def __init__(self, provider: str = None):
         self.provider = provider or settings.transcription_provider
         self._whisperx = None
@@ -13,6 +14,7 @@ class TranscriberService:
     def _get_whisperx(self):
         if self._whisperx is None:
             from services.whisperx_transcriber import WhisperXTranscriber
+
             self._whisperx = WhisperXTranscriber(model_size="base")
         return self._whisperx
 
@@ -26,7 +28,7 @@ class TranscriberService:
         try:
             transcripts = []
             for i, chunk in enumerate(chunks):
-                logger.debug(f"Transcribe chunk {i+1}/{len(chunks)}")
+                logger.debug(f"Transcribe chunk {i + 1}/{len(chunks)}")
                 if self.provider == "groq":
                     text = self._transcribe_groq(chunk)
                 elif self.provider == "whisperx":
@@ -53,7 +55,9 @@ class TranscriberService:
         if self.provider == "whisperx":
             return self._get_whisperx().transcribe_with_timestamps(audio_path)
 
-        logger.warning(f"Provider '{self.provider}' tidak support word timestamps, fallback ke plain transcribe")
+        logger.warning(
+            f"Provider '{self.provider}' tidak support word timestamps, fallback ke plain transcribe"
+        )
         text = self.transcribe(audio_path)
         return {
             "segments": [{"text": text, "start": 0, "end": 0}],
@@ -63,6 +67,7 @@ class TranscriberService:
 
     def _transcribe_groq(self, audio_path: Path) -> str:
         from groq import Groq
+
         client = Groq(api_key=settings.groq_api_key)
         with open(audio_path, "rb") as f:
             result = client.audio.transcriptions.create(
@@ -74,6 +79,7 @@ class TranscriberService:
 
     def _transcribe_local(self, audio_path: Path) -> str:
         import whisper
+
         model = whisper.load_model("base")
         result = model.transcribe(str(audio_path))
         return result["text"]

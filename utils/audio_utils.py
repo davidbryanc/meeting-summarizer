@@ -14,25 +14,31 @@ MAX_SIZE_MB = {
     ".mp4": 500,
 }
 
+
 def is_supported_format(filename: str) -> bool:
     ext = Path(filename).suffix.lower()
     return ext in SUPPORTED_FORMATS
+
 
 def get_max_size_mb(filename: str) -> int:
     ext = Path(filename).suffix.lower()
     return MAX_SIZE_MB.get(ext, 100)
 
+
 def get_upload_path(filename: str) -> Path:
     UPLOADS_DIR.mkdir(exist_ok=True)
     return UPLOADS_DIR / filename
 
+
 def extract_audio_from_video(video_path: Path) -> Path:
     from moviepy import VideoFileClip
+
     audio_path = video_path.with_suffix(".mp3")
     clip = VideoFileClip(str(video_path))
     clip.audio.write_audiofile(str(audio_path), verbose=False, logger=None)
     clip.close()
     return audio_path
+
 
 def split_audio_into_chunks(audio_path: Path) -> list[Path]:
     """
@@ -62,9 +68,11 @@ def split_audio_into_chunks(audio_path: Path) -> list[Path]:
 
     return chunks
 
+
 def cleanup_file(file_path: Path) -> None:
     if file_path.exists():
         file_path.unlink()
+
 
 def cleanup_chunks(chunk_paths: list[Path]) -> None:
     """Hapus chunk-chunk sementara setelah transcribe selesai."""
@@ -74,7 +82,8 @@ def cleanup_chunks(chunk_paths: list[Path]) -> None:
         chunk_dir = chunk_paths[0].parent
         if chunk_dir.exists() and not any(chunk_dir.iterdir()):
             chunk_dir.rmdir()
-            
+
+
 def convert_to_wav(audio_path: Path) -> Path:
     """Convert audio ke wav untuk kompatibilitas soundfile."""
     if audio_path.suffix.lower() == ".wav":

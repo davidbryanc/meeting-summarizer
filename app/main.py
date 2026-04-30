@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
@@ -103,13 +104,18 @@ async def on_message(message: cl.Message):
         file_size = len(data)
 
         # Import ETA helper
-        from utils.eta import estimate_transcribe_seconds, estimate_diarization_seconds, format_eta
+        from utils.eta import (
+            estimate_transcribe_seconds,
+            estimate_diarization_seconds,
+            format_eta,
+        )
+
         transcribe_eta = format_eta(estimate_transcribe_seconds(file_size))
         diarize_eta = format_eta(estimate_diarization_seconds(file_size))
 
         # --- Step 1: Transcribe ---
         async with cl.Step(name="Transcribe Audio", type="tool") as step1:
-            step1.input = f"File: `{filename}` ({round(file_size/1024/1024, 1)} MB) — ETA: {transcribe_eta}"
+            step1.input = f"File: `{filename}` ({round(file_size / 1024 / 1024, 1)} MB) — ETA: {transcribe_eta}"
 
             async with httpx.AsyncClient(timeout=300) as client:
                 try:
@@ -139,7 +145,9 @@ async def on_message(message: cl.Message):
 
                 if result["status"] == "failed":
                     step1.output = f"Gagal: {result.get('error')}"
-                    await cl.Message(content=f"Transcribe gagal: {result.get('error')}").send()
+                    await cl.Message(
+                        content=f"Transcribe gagal: {result.get('error')}"
+                    ).send()
                     return
 
                 transcript = result["result"]["transcript"]
@@ -158,10 +166,14 @@ async def on_message(message: cl.Message):
                 step2.input = f"ETA: {diarize_eta} — WhisperX + pyannote"
                 try:
                     saved_path_temp = file_handler.save(filename, data)
-                    audio_path_temp, original_video_temp = file_handler.prepare_audio(saved_path_temp)
+                    audio_path_temp, original_video_temp = file_handler.prepare_audio(
+                        saved_path_temp
+                    )
                     wav_path = convert_to_wav(audio_path_temp)
 
-                    wx_result = transcriber_service.transcribe_with_timestamps(audio_path_temp)
+                    wx_result = transcriber_service.transcribe_with_timestamps(
+                        audio_path_temp
+                    )
                     word_segments = wx_result.get("word_segments", [])
                     diar_segments = diarizer.diarize(wav_path)
 
@@ -175,13 +187,17 @@ async def on_message(message: cl.Message):
                         words_with_speakers = diarizer.assign_speakers_to_words(
                             word_segments, diar_segments
                         )
-                        speaker_transcript = diarizer.build_speaker_transcript(words_with_speakers)
+                        speaker_transcript = diarizer.build_speaker_transcript(
+                            words_with_speakers
+                        )
                         step2.output = f"Ditemukan {speaker_count} pembicara — word-level alignment"
                     else:
                         speaker_transcript = diarizer.merge_transcript_with_speakers(
                             transcript, diar_segments
                         )
-                        step2.output = f"Ditemukan {speaker_count} pembicara — heuristik"
+                        step2.output = (
+                            f"Ditemukan {speaker_count} pembicara — heuristik"
+                        )
 
                     if speaker_transcript:
                         cl.user_session.set("transcript", speaker_transcript)
@@ -226,7 +242,9 @@ async def on_message(message: cl.Message):
         try:
             pdf_path = save_summary_pdf(summary, filename)
             pdf_filename = quote(pdf_path.name)
-            pdf_info = f"- Summary PDF: [download]({API_BASE}/download/{pdf_filename})\n"
+            pdf_info = (
+                f"- Summary PDF: [download]({API_BASE}/download/{pdf_filename})\n"
+            )
         except Exception as e:
             logger.warning(f"PDF export gagal: {e}")
             pdf_info = ""
@@ -264,7 +282,7 @@ async def _display_summary(summary):
             priority_label = {
                 "high": "🔴 High",
                 "medium": "🟡 Medium",
-                "low": "🟢 Low"
+                "low": "🟢 Low",
             }.get(item.priority, item.priority)
             output += f"- [{priority_label}]{assignee}: {item.task}\n"
     else:

@@ -7,8 +7,8 @@ from utils.audio_utils import (
     cleanup_file,
 )
 
-class FileHandlerService:
 
+class FileHandlerService:
     def validate(self, filename: str, file_size_bytes: int) -> tuple[bool, str]:
         if not is_supported_format(filename):
             return False, "Format tidak didukung. Gunakan: mp3, mp4, wav, m4a, webm."
@@ -16,7 +16,10 @@ class FileHandlerService:
         size_mb = file_size_bytes / (1024 * 1024)
         max_mb = get_max_size_mb(filename)
         if size_mb > max_mb:
-            return False, f"File terlalu besar ({size_mb:.1f} MB). Maksimal {max_mb} MB untuk format ini."
+            return (
+                False,
+                f"File terlalu besar ({size_mb:.1f} MB). Maksimal {max_mb} MB untuk format ini.",
+            )
 
         return True, ""
 

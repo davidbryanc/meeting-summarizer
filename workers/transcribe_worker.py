@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
@@ -15,7 +16,9 @@ transcriber = TranscriberService()
 file_handler = FileHandlerService()
 
 
-async def transcribe_job(ctx: dict, job_id: str, audio_path_str: str, original_video_str: str | None):
+async def transcribe_job(
+    ctx: dict, job_id: str, audio_path_str: str, original_video_str: str | None
+):
     """
     ARQ job function — dijalankan oleh worker di background.
     ctx berisi redis connection yang diinject ARQ otomatis.
@@ -28,24 +31,30 @@ async def transcribe_job(ctx: dict, job_id: str, audio_path_str: str, original_v
 
     try:
         # Update status ke processing
-        await redis.hset(f"job:{job_id}", mapping={
-            "status": "processing",
-            "progress": "10",
-            "message": "Transcribing audio...",
-        })
+        await redis.hset(
+            f"job:{job_id}",
+            mapping={
+                "status": "processing",
+                "progress": "10",
+                "message": "Transcribing audio...",
+            },
+        )
 
         transcript = transcriber.transcribe(audio_path)
 
         file_handler.cleanup(audio_path, original_video)
 
         # Update status ke completed
-        await redis.hset(f"job:{job_id}", mapping={
-            "status": "completed",
-            "progress": "100",
-            "message": "Transcription complete",
-            "transcript": transcript,
-            "char_count": str(len(transcript)),
-        })
+        await redis.hset(
+            f"job:{job_id}",
+            mapping={
+                "status": "completed",
+                "progress": "100",
+                "message": "Transcription complete",
+                "transcript": transcript,
+                "char_count": str(len(transcript)),
+            },
+        )
 
         # Set TTL 1 jam — hapus otomatis dari Redis
         await redis.expire(f"job:{job_id}", 3600)
@@ -55,17 +64,21 @@ async def transcribe_job(ctx: dict, job_id: str, audio_path_str: str, original_v
     except Exception as e:
         logger.error(f"Job {job_id} gagal: {e}")
         file_handler.cleanup(audio_path, original_video)
-        await redis.hset(f"job:{job_id}", mapping={
-            "status": "failed",
-            "progress": "0",
-            "message": "Transcription failed",
-            "error": str(e),
-        })
+        await redis.hset(
+            f"job:{job_id}",
+            mapping={
+                "status": "failed",
+                "progress": "0",
+                "message": "Transcription failed",
+                "error": str(e),
+            },
+        )
         await redis.expire(f"job:{job_id}", 3600)
 
 
 class WorkerSettings:
     """Konfigurasi ARQ worker."""
+
     functions = [transcribe_job]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     max_jobs = 10

@@ -1,10 +1,12 @@
 from pathlib import Path
 from config.settings import settings
 from utils.logger import get_logger
+
 logger = get_logger("diarizer")
 
 try:
     from pyannote.audio import Pipeline
+
     PYANNOTE_AVAILABLE = True
 except ImportError:
     PYANNOTE_AVAILABLE = False
@@ -12,7 +14,6 @@ except ImportError:
 
 
 class DiarizerService:
-
     def __init__(self):
         self._pipeline = None
 
@@ -25,6 +26,7 @@ class DiarizerService:
         if self._pipeline is not None:
             return self._pipeline
         import torch
+
         logger.info("Loading pyannote pipeline...")
         self._pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
@@ -40,6 +42,7 @@ class DiarizerService:
             raise RuntimeError("pyannote.audio tidak terinstall")
         import torch
         import soundfile as sf
+
         logger.info(f"Mulai diarization: {audio_path.name}")
         pipeline = self._load_pipeline()
         data, sample_rate = sf.read(str(audio_path), dtype="float32", always_2d=True)
@@ -49,13 +52,19 @@ class DiarizerService:
         audio_input = {"waveform": waveform, "sample_rate": sample_rate}
         diarization = pipeline(audio_input)
         segments = []
-        for segment, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True):
-            segments.append({
-                "speaker": speaker,
-                "start": round(segment.start, 2),
-                "end": round(segment.end, 2),
-            })
-        logger.info(f"Diarization selesai: {len(set(s['speaker'] for s in segments))} pembicara")
+        for segment, _, speaker in diarization.speaker_diarization.itertracks(
+            yield_label=True
+        ):
+            segments.append(
+                {
+                    "speaker": speaker,
+                    "start": round(segment.start, 2),
+                    "end": round(segment.end, 2),
+                }
+            )
+        logger.info(
+            f"Diarization selesai: {len(set(s['speaker'] for s in segments))} pembicara"
+        )
         return segments
 
     def assign_speakers_to_words(
